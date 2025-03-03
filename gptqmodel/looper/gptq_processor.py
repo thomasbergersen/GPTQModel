@@ -120,6 +120,9 @@ class GPTQProcessor(LoopProcessor):
         # logger.info(f"Quantizing module START: {name}, {gptq[name].shape()}")
         ## Need to return the quantized_weight for offloading
         g = gptq[module.name]
+        # for small datasets, not all mlp.experts gate_proj would be called
+        if not hasattr(g, "H"):
+            return
         # TODO FIX ME, quantize does NOT need to pass any args! Check HF compat!
         wq, scale, zero, g_idx, duration, avg_loss, damp_percent = g.quantize()
         ## Assign the quantized weight to the weight
