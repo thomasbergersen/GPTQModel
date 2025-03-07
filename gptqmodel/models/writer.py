@@ -230,6 +230,9 @@ def ModelWriter(cls):
         # --- start config save block ---
         # Save quantized config
         config.quantization_config = quantize_config.to_dict()
+        raw_torch_dtype = config.torch_dtype
+        if config.torch_dtype == "bfloat16":
+            config.torch_dtype = "float16"
         self.model.config = config
 
         # Save model config, including generation_config
@@ -265,6 +268,7 @@ def ModelWriter(cls):
         # --- end config save block ---
 
         model.to(CPU)
+        model.config.torch_dtype = raw_torch_dtype
         state_dict = get_state_dict_for_save(model)
 
         model_base_name = "model"
