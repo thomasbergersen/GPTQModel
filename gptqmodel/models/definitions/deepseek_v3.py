@@ -20,7 +20,7 @@ from ..base import BaseGPTQModel
 
 class DeepSeekV3GPTQ(BaseGPTQModel):
     # deepseek_v3 requires custom model code
-    require_trust_remote_code = True
+    require_trust_remote_code = False
 
     require_fast_init = False
 
@@ -38,11 +38,11 @@ class DeepSeekV3GPTQ(BaseGPTQModel):
     layer_modules_strict = False
 
     layer_modules = [
-        ["self_attn.q_a_proj", "self_attn.q_b_proj", "self_attn.kv_a_proj_with_mqa", "self_attn.kv_b_proj"],
-        ["self_attn.o_proj"],
+        ["self_attn.q_a_proj", "self_attn.q_b_proj", "self_attn.kv_a_proj_with_mqa", "self_attn.kv_b_proj", "self_attn.o_proj"],
+        #["self_attn.o_proj"],
 
-        ["mlp.gate_proj", "mlp.up_proj"],
-        ["mlp.down_proj"],
+        ["mlp.gate_proj", "mlp.up_proj", "mlp.down_proj"],
+        # ["mlp.down_proj"],
 
         # included in layer 3-61, uses dynamic_expert_index
         # DeepSeek-V3 uses 256 experts
@@ -52,6 +52,6 @@ class DeepSeekV3GPTQ(BaseGPTQModel):
         [f"mlp.experts.{EXPERT_INDEX_PLACEHOLDER}.down_proj"],
 
         # included in layer 3-61
-        ["mlp.shared_experts.gate_proj", "mlp.shared_experts.up_proj"],
-        ["mlp.shared_experts.down_proj"],
+        ["mlp.shared_experts.gate_proj", "mlp.shared_experts.up_proj", "mlp.shared_experts.down_proj"],
+        # ["mlp.shared_experts.down_proj"],
     ]

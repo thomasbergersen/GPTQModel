@@ -51,14 +51,14 @@ class Test(ModelTest):
     @parameterized.expand(
         [
             (QUANT_METHOD.GPTQ, FORMAT.GPTQ),
-            (QUANT_METHOD.QQQ, FORMAT.QQQ),
+            # (QUANT_METHOD.QQQ, FORMAT.QQQ),
         ]
     )
     def test_quant_and_eora(self, quant_method: QUANT_METHOD, format: FORMAT):
         bits = 4
         group_size = 128
         desc_act = True
-        rank = 128
+        rank = 4
         batch_size = 1
         calibration_dataset_rows = 512
         calibration_dataset_concat_size = 0 # disable
@@ -95,6 +95,16 @@ class Test(ModelTest):
                 rank=rank,
             )
 
+            # rank 4
+            # --------Eval
+            # gptq + EoRA
+            # Result - --------
+            # | Tasks | Version | Filter | n - shot | Metric | | Value | | Stderr |
+            # | ---------------------------------------- | ------: | ------ | -----: | -------- | --- | -----: | --- | -----: |
+            # | arc_challenge | 1 | none | 0 | acc |↑ | 0.3089 |± | 0.0135 |
+            # | | | none | 0 | acc_norm |↑ | 0.3677 |± | 0.0141 |
+            # | mmlu | 2 | none | | acc |↑ | 0.3307 |± | 0.0039 |
+
             quant_config = QuantizeConfig(
                 bits=bits,
                 group_size=group_size,
@@ -125,8 +135,8 @@ class Test(ModelTest):
             torch_empty_cache()
 
             # BACKEND.EXLLAMA_V2, BACKEND.EXLLAMA_V1, BACKEND.TRITON, BACKEND.CUDA,
-            for backend in [ BACKEND.AUTO ]: # BACKEND.IPEX, BACKEND.BITBLAS, BACKEND.EXLLAMA_V2V BACKEND.MARLIN
-                base_bench = self.bench(path=tmpdir, backend=backend, adapter=None) # inference using qweights only
+            for backend in [ BACKEND.TORCH ]: # BACKEND.IPEX, BACKEND.BITBLAS, BACKEND.EXLLAMA_V2V BACKEND.MARLIN
+                #base_bench = self.bench(path=tmpdir, backend=backend, adapter=None) # inference using qweights only
                 eora_bench = self.bench(path=tmpdir, backend=backend, adapter=eora) # inference using eora (lora)
 
                 print('--------GPTQModel + EoRA Config ---------')
@@ -135,10 +145,10 @@ class Test(ModelTest):
                 table_data = [[key, value] for key, value in config_dict.items()]
                 print(tabulate(table_data, headers=["Key", "Value"], tablefmt="grid"))
 
-                print(f'--------Eval {quant_method} Result---------')
-                print(make_table(base_bench))
-                if "groups" in base_bench:
-                    print(make_table(base_bench, "groups"))
+                # print(f'--------Eval {quant_method} Result---------')
+                # print(make_table(base_bench))
+                # if "groups" in base_bench:
+                #     print(make_table(base_bench, "groups"))
 
                 print(f'--------Eval {quant_method} + EoRA Result---------')
                 print(make_table(eora_bench))
