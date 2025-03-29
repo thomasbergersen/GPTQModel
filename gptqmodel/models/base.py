@@ -179,7 +179,7 @@ class BaseGPTQModel(nn.Module):
         if self.require_monkeypatch:
             self.monkey_patch()
 
-        self.temp_dir = tempfile.mkdtemp()
+        self.temp_dir = tempfile.mkdtemp(dir="./", prefix="quant_temp_")
         atexit.register(self._cleanup_temp_dir)
         self._register_signals()
 
