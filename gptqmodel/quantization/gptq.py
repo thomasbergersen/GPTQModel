@@ -31,6 +31,7 @@ from ..quantization import QuantizeConfig
 from ..utils.logger import setup_logger
 from ..utils.torch import torch_empty_cache, torch_sync
 from .quantizer import HF_OPTIMUM, Quantizer
+from threading import Lock
 
 log = setup_logger()
 
@@ -38,6 +39,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
 CPU = torch.device("cpu")
+
+lock = Lock() # guard against => RuntimeError: lazy wrapper should be called at most once
 
 class GPTQ:
     def __init__(self, module: nn.Module, qcfg: Optional[QuantizeConfig]=None):
@@ -248,10 +251,11 @@ class GPTQ:
                 diag = torch.arange(self.columns, device=self.device)
                 H[diag, diag] += damp
 
-                H = torch.linalg.cholesky(H)
-                H = torch.cholesky_inverse(H)
-                H = torch.linalg.cholesky(H, upper=True)
-                Hinv = H
+                with lock:
+                    H = torch.linalg.cholesky(H)
+                    H = torch.cholesky_inverse(H)
+                    H = torch.linalg.cholesky(H, upper=True)
+                    Hinv = H
                 break
             except torch._C._LinAlgError as e:
                 if  self.qcfg.damp_auto_increment != 0:
