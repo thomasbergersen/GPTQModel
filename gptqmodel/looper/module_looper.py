@@ -381,7 +381,7 @@ class ModuleLooper():
 
                     from multiprocessing.pool import ThreadPool
 
-                    with ThreadPool(processes=2) as pool:
+                    with ThreadPool(processes=4) as pool:
                         pool.map(process_module, subset.keys())
 
                     if index == len(layer_modules) - 1:
