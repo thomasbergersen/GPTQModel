@@ -19,6 +19,7 @@
 import math
 import os
 import sys
+import threading
 import time
 from typing import Optional
 
@@ -38,6 +39,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
 CPU = torch.device("cpu")
+
+lock = threading.Lock()
 
 class GPTQ:
     def __init__(self, module: nn.Module, qcfg: Optional[QuantizeConfig]=None):
@@ -84,6 +87,100 @@ class GPTQ:
             clone = clone.t()
 
         return clone.float()
+
+    @torch.inference_mode()
+    def block_cholesky_inverse(self, L: torch.Tensor, upper=False, block_size=512):
+        """
+        Optimized Cholesky inverse with O(block_size^2) memory usage.
+        Args:
+            L (torch.Tensor): Cholesky factor (lower triangular)
+            upper (bool): If True, L is upper triangular
+            block_size (int): Processing block size (tunes memory/performance)
+        Returns:
+            torch.Tensor: The inverse matrix
+        """
+        assert L.dim() == 2 and L.size(0) == L.size(1), "Input must be square"
+        n = L.size(0)
+        device = L.device
+        dtype = L.dtype
+
+        if upper:
+            L = L.t()
+
+        invA = torch.zeros_like(L)
+        num_blocks = math.ceil(n / block_size)
+
+        # Cache for invL blocks to avoid recomputation
+        invL_cache = {}
+
+        for k in reversed(range(num_blocks)):
+            k_start = k * block_size
+            k_end = min((k + 1) * block_size, n)
+            k_size = k_end - k_start
+
+            # Diagonal block inversion
+            L_block = L[k_start:k_end, k_start:k_end]
+            invL_block = torch.linalg.solve_triangular(
+                L_block,
+                torch.eye(k_size, device=device, dtype=dtype),
+                upper=False
+            )
+            invL_cache[k] = invL_block
+
+            # Diagonal block contribution
+            invA[k_start:k_end, k_start:k_end] = invL_block.t() @ invL_block
+
+            # Process off-diagonal blocks in parallel where possible
+            for j in range(k):
+                j_start = j * block_size
+                j_end = min((j + 1) * block_size, n)
+                j_size = j_end - j_start
+
+                # Compute all required invL_ik blocks first
+                invL_ik_blocks = []
+                for i in range(k, num_blocks):
+                    i_start = i * block_size
+                    i_end = min((i + 1) * block_size, n)
+
+                    if i == k:
+                        invL_ik = invL_block
+                    else:
+                        if i in invL_cache:
+                            invL_ii = invL_cache[i]
+                        else:
+                            L_ii = L[i_start:i_end, i_start:i_end]
+                            invL_ii = torch.linalg.solve_triangular(
+                                L_ii,
+                                torch.eye(i_end - i_start, device=device, dtype=dtype),
+                                upper=False
+                            )
+                            invL_cache[i] = invL_ii
+
+                        L_ik = L[i_start:i_end, k_start:k_end]
+                        invL_ik = -invL_ii @ (L_ik @ invL_block)
+                        del invL_ii
+
+                    invL_ik_blocks.append(invL_ik)
+                    del invL_ik
+
+                # Stack blocks for batched operations
+                L_jk = L[j_start:j_end, k_start:k_end]
+
+                # Compute contributions in a more vectorized way
+                temp_col = torch.cat([
+                    (invL_ik.t() @ L_jk.t()) for invL_ik in invL_ik_blocks
+                ], dim=0)
+
+                del invL_ik_blocks
+
+                # Accumulate to output
+                invA[j_start:j_end, k_start:k_end] = temp_col[:j_size].t()
+                invA[k_start:k_end, j_start:j_end] = temp_col[:j_size]
+
+                del temp_col
+
+        del invL_cache
+        return invA
 
     def add_batch(self, inp, out):
         self.fwd_counter += 1
