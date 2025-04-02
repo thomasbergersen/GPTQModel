@@ -31,7 +31,6 @@ from ..quantization import QuantizeConfig
 from ..utils.logger import setup_logger
 from ..utils.torch import torch_empty_cache, torch_sync
 from .quantizer import HF_OPTIMUM, Quantizer
-from threading import Lock
 
 log = setup_logger()
 
@@ -39,8 +38,6 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
 CPU = torch.device("cpu")
-
-lock = Lock() # guard against => RuntimeError: lazy wrapper should be called at most once
 
 class GPTQ:
     def __init__(self, module: nn.Module, qcfg: Optional[QuantizeConfig]=None):
@@ -252,8 +249,17 @@ class GPTQ:
                 H[diag, diag] += damp
 
                 with lock:
+                    # print(f"H SHAPE: {H.shape}")
                     H = torch.linalg.cholesky(H)
-                    H = torch.cholesky_inverse(H)
+
+                    try:
+                        H = self.block_cholesky_inverse(H, block_size=self.columns)
+                    except torch.OutOfMemoryError:
+                        # half the block size will use ~18% less memory but at higher accuracy loss: 1^-2 vs 1^-8
+                        # worth the tradeoff since it's either oom or slightly higher accuracy loss
+                        H = self.block_cholesky_inverse(H, block_size=self.columns//2)
+                        log.warn("Quantization: OOM bypassed via low memory math at a cost of lower accuracy: `cholesky_inverse`")
+
                     H = torch.linalg.cholesky(H, upper=True)
                     Hinv = H
                 break

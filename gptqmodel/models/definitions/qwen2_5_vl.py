@@ -14,4 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-__version__ = "2.2.0"
+from .base_qwen2_vl import BaseQwen2VLGPTQ
+
+
+class Qwen2_5_VLGPTQ(BaseQwen2VLGPTQ):
+    layer_type = "Qwen2_5_VLDecoderLayer"

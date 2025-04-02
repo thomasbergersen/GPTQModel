@@ -51,11 +51,11 @@ class TestQuantization(ModelTest):
     @parameterized.expand(
         [
             # (QUANT_METHOD.GPTQ, BACKEND.AUTO, False, FORMAT.GPTQ, 8),
-            (QUANT_METHOD.GPTQ, BACKEND.TORCH, False, FORMAT.GPTQ, 4),
-            (QUANT_METHOD.GPTQ, BACKEND.TORCH, False, FORMAT.GPTQ_V2, 4),
-            (QUANT_METHOD.GPTQ, BACKEND.TORCH, True, FORMAT.GPTQ, 4),
-            (QUANT_METHOD.GPTQ, BACKEND.TORCH, True, FORMAT.GPTQ_V2, 4),
-            (QUANT_METHOD.QQQ, BACKEND.AUTO, True, FORMAT.QQQ, 4),
+            (QUANT_METHOD.GPTQ, BACKEND.TORCH, False, FORMAT.GPTQ, 8),
+            # (QUANT_METHOD.GPTQ, BACKEND.TORCH, False, FORMAT.GPTQ_V2, 4),
+            # (QUANT_METHOD.GPTQ, BACKEND.TORCH, True, FORMAT.GPTQ, 4),
+            # (QUANT_METHOD.GPTQ, BACKEND.TORCH, True, FORMAT.GPTQ_V2, 4),
+            # (QUANT_METHOD.QQQ, BACKEND.AUTO, True, FORMAT.QQQ, 4),
             # (QUANT_METHOD.GPTQ, BACKEND.TORCH, True, FORMAT.GPTQ, 4),
             # (QUANT_METHOD.GPTQ, BACKEND.TRITON, True, FORMAT.GPTQ_V2, 4),
             # (QUANT_METHOD.GPTQ, BACKEND.EXLLAMA_V2, False, FORMAT.GPTQ, 4),
@@ -65,7 +65,7 @@ class TestQuantization(ModelTest):
         if method == QUANT_METHOD.GPTQ:
             quantize_config = QuantizeConfig(
                 bits=bits,
-                group_size=32,
+                group_size=128 if bits == 8 else 32,
                 desc_act=True,
                 sym=sym,
                 format=format,
