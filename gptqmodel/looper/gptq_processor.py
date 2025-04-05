@@ -117,10 +117,6 @@ class GPTQProcessor(LoopProcessor):
         return tmp
 
     def process(self, module: NamedModule, auto_gc: bool = True):
-        # need to sync stream copies
-        if torch.cuda.device_count() > 1:
-            torch.cuda.synchronize()
-
         # Reset peak memory stats
         #torch.cuda.reset_peak_memory_stats()
         self.pb.title(f"Quantizing {module.name} in layer ").draw()

@@ -367,22 +367,30 @@ class ModuleLooper():
 
                         for name in moe_skip_modules:
                             subset.pop(name)
-                    
-                    # for name_index, name in enumerate(subset):
-                    #     m = subset[name]
-                    #     processor.process(module=m)
-                    #     processed_subset[name] = m
 
-                    def process_module(name):
+                    # need to sync stream copies
+                    if torch.cuda.device_count() > 1:
+                        torch.cuda.synchronize()
+
+                    for name_index, name in enumerate(subset):
                         m = subset[name]
                         processor.process(module=m, auto_gc=auto_gc)
                         processed_subset[name] = m
-                        return
 
-                    from multiprocessing.pool import ThreadPool
-
-                    with ThreadPool(processes=1) as pool:
-                        pool.map(process_module, subset.keys())
+                    # def process_module(name):
+                    #     m = subset[name]
+                    #     processor.process(module=m, auto_gc=auto_gc)
+                    #     processed_subset[name] = m
+                    #     return
+                    #
+                    # from multiprocessing.pool import ThreadPool
+                    #
+                    # with ThreadPool(processes=1) as pool:
+                    #     # need to sync stream copies
+                    #     if torch.cuda.device_count() > 1:
+                    #         torch.cuda.synchronize()
+                    #
+                    #     pool.map(process_module, subset.keys())
 
                     if index == len(layer_modules) - 1:
                         if auto_gc:
