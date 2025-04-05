@@ -210,6 +210,7 @@ class GPTQ:
 
         if len(inp.shape) == 2:
             inp = inp.unsqueeze(0)
+
         batch_size = inp.shape[0]
 
         if isinstance(self.module, nn.Linear) or isinstance(self.module, transformers.Conv1D):
@@ -238,7 +239,7 @@ class GPTQ:
         self.nsamples += batch_size
         # inp = inp.float()
 
-        inp = math.sqrt(2 / self.nsamples) * inp.float()
+        inp = math.sqrt(2 / self.nsamples) * inp  #.float()
         # self.H += 2 / self.nsamples * inp.matmul(inp.t())
         #self.H += self.chunked_matmul_t_and_t_transposed(inp, chunk_size=1024)
 
