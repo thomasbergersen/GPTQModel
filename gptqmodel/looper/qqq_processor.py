@@ -120,7 +120,7 @@ class QQQProcessor(LoopProcessor):
             torch.cuda.synchronize()
 
         self.pb.title(f"Quantizing {module.name} in layer ").draw()
-        gptq = self.tasks
+        qqq = self.tasks
 
         # logger.info(f"Quantizing module START: {name}, {gptq[name].shape()}")
         ## Need to return the quantized_weight for offloading
