@@ -29,7 +29,7 @@ from ..models import BaseGPTQModel
 from ..models._const import SUPPORTS_MODULE_TYPES
 from ..models.writer import save_module
 from ..nn_modules.hooked_linear import replace_linear_with_hooked_linear
-from ..quantization.gptq import CPU
+from ..quantization.gptq import CPU, CUDA_0, CUDA_1
 from ..utils.logger import setup_logger
 from ..utils.model import (find_modules, get_device, get_module, get_module_by_name_prefix,
                            get_moe_layer_modules, move_to, nested_move_to)
@@ -375,7 +375,7 @@ class ModuleLooper():
 
                     def process_module(name):
                         m = subset[name]
-                        processor.process(module=m)
+                        processor.process(module=m, auto_gc=auto_gc)
                         processed_subset[name] = m
                         return
 
@@ -419,6 +419,7 @@ class ModuleLooper():
                             if module.reuse_kv:
                                 additional_layer_inputs["kv_last_layer"] = shared_kv_cache_dict.get(layer_index - 1)
 
+                        # log.info(f"MODULE Last forward: {module}")
                         layer_output = move_to(
                             module(*layer_input)[0] if is_lm_head_module else
                             module(*layer_input, **additional_layer_inputs)[0],

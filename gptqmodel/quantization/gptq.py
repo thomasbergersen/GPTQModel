@@ -30,7 +30,7 @@ import transformers
 from ..looper.named_module import NamedModule
 from ..quantization import QuantizeConfig
 from ..utils.logger import setup_logger
-from ..utils.torch import torch_empty_cache, torch_sync
+from ..utils.torch import torch_sync
 from .quantizer import HF_OPTIMUM, Quantizer
 
 log = setup_logger()
@@ -39,6 +39,8 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
 CPU = torch.device("cpu")
+CUDA_0 = torch.device("cuda:0")
+CUDA_1 = torch.device("cuda:1") if torch.cuda.device_count() > 1 else CUDA_0
 
 lock = threading.Lock()
 
@@ -53,9 +55,16 @@ class GPTQ:
 
         self.qcfg = qcfg if qcfg else QuantizeConfig() # HF compat will not pass qcfg
         self.device = self.module.weight.device
-        self.module_copy = self._clone_module()
 
-        self.rows, self.columns = self.module_copy.shape[0], self.module_copy.shape[1]
+        self.module_copy = None
+        if isinstance(self.module, (nn.Conv2d,  transformers.pytorch_utils.Conv1D)):
+            self.module_copy = self._clone_module(device=CUDA_1)
+            shape = self.module_copy.shape
+        else:
+            shape = self.module.weight.data.shape
+
+        self.rows, self.columns = shape[0], shape[1]
+
         # self.H = torch.zeros((self.columns, self.columns), device=self.device)
         self.nsamples = 0
 
@@ -77,8 +86,11 @@ class GPTQ:
         else:
             return (0, 0)
 
-    def _clone_module(self):
-        clone = self.module.weight.data.clone()
+    def _clone_module(self, copy=True, device: torch.device = None):
+        if not device:
+            device = self.module.weight.data.device
+
+        clone = self.module.weight.data.to(copy=copy, device=device)
 
         if isinstance(self.module, nn.Conv2d):
             clone = clone.flatten(1)
@@ -182,19 +194,19 @@ class GPTQ:
         del invL_cache
         return invA
 
-    def add_batch(self, inp, out):
+    def add_batch(self, inp: torch.Tensor, out: torch.Tensor):
         self.fwd_counter += 1
 
         if self.fwd_inputs_buffered:
-            self.fwd_inputs_buffered_data.append(inp.to(device=CPU))
+            if CUDA_0.index != CUDA_1.index:
+                self.fwd_inputs_buffered_data.append(inp.to(device=CUDA_1, non_blocking=True))
+            else:
+                self.fwd_inputs_buffered_data.append(inp.to(device=CPU))
         else:
             self.process_batch(inp)
 
     def process_batch(self, inp):
-        inp = inp.to(device=self.device)
-        # if os.environ.get("DEBUG"):
-        #     self.inp1 = inp
-        #     self.out1 = out
+        inp = inp.to(device=CUDA_1, dtype=torch.float32)
 
         if len(inp.shape) == 2:
             inp = inp.unsqueeze(0)
@@ -217,12 +229,9 @@ class GPTQ:
             inp = inp.flatten(1)
 
         if not hasattr(self, "H"):
-            try:
-                self.H = torch.zeros((self.columns, self.columns), device=self.device)
-            except torch.OutOfMemoryError:
-                log.info("Memory: OOM H allocate bypass")
-                torch_empty_cache()
-                self.H = torch.zeros((self.columns, self.columns), device=self.device)
+            self.H = torch.zeros((self.columns, self.columns),
+                        dtype=torch.float32,
+                        device=CUDA_1)
         else:
             self.H *= self.nsamples / (self.nsamples + batch_size)
 
@@ -233,17 +242,7 @@ class GPTQ:
         # self.H += 2 / self.nsamples * inp.matmul(inp.t())
         #self.H += self.chunked_matmul_t_and_t_transposed(inp, chunk_size=1024)
 
-        try:
-            self.H += inp.matmul(inp.t())
-        except torch.OutOfMemoryError:
-            log.info("Memory: OOM cpu bypass for process batch matmul")
-            torch_empty_cache()
-
-            device = self.H.device
-            self.H, inp = self.H.to(device=CPU), inp.to(device=CPU)
-            self.H += inp.matmul(inp.t())
-            self.H = self.H.to(device=device) # move back
-
+        self.H += inp.matmul(inp.t())
 
     # FIXME, optimum needs fasterquant, we need to remove it
     def fasterquant(
@@ -299,7 +298,8 @@ class GPTQ:
             raise RuntimeError("For MacOS you must set env `PYTORCH_ENABLE_MPS_FALLBACK=1` before running quantization.")
 
         if self.module_copy is None:
-            W = self._clone_module()
+            # log.info("copy W to cuda_1")
+            W = self._clone_module(device=CUDA_1)
         else:
             W = self.module_copy
             self.module_copy = None
@@ -342,7 +342,7 @@ class GPTQ:
         while 1 > damp_percent > 0:
             try:
                 damp = damp_percent * torch.mean(torch.diag(H))
-                diag = torch.arange(self.columns, device=self.device)
+                diag = torch.arange(self.columns, device=CUDA_1)
                 H[diag, diag] += damp
 
                 with lock:
@@ -350,8 +350,8 @@ class GPTQ:
                     H = torch.linalg.cholesky(H)
 
                     try:
-                        H = self.block_cholesky_inverse(H, block_size=H.shape[0])
-                        #H = torch.cholesky_inverse(H)
+                        #H = self.block_cholesky_inverse(H, block_size=H.shape[0])
+                        H = torch.cholesky_inverse(H)
                     except torch.OutOfMemoryError:
                         # half the block size will use ~18% less memory but at higher accuracy loss: 1^-2 vs 1^-8
                         # worth the tradeoff since it's either oom or slightly higher accuracy loss
@@ -422,7 +422,7 @@ class GPTQ:
             #     logger.debug(torch.sum((self.layer(self.inp1) - self.out1) ** 2))
             #     logger.debug(torch.sum(Losses))
 
-        torch_sync(self.device)
+        torch_sync()
 
         avg_loss = torch.sum(Losses).item() / self.nsamples
 
@@ -459,7 +459,7 @@ class GPTQ:
         else:
             Q = Q.type_as(self.module.weight.data)
 
-        Q = Q.to(device=self.device)
+        Q = Q.to(device=CUDA_1)
 
         # if os.environ.get("DEBUG"):
         #     logger.debug(torch.sum((self.layer(self.inp1) - self.out1) ** 2))

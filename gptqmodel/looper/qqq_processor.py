@@ -115,12 +115,16 @@ class QQQProcessor(LoopProcessor):
         return tmp
 
     def process(self, module: NamedModule):
+        # need to sync stream copies
+        if torch.cuda.device_count() > 1:
+            torch.cuda.synchronize()
+
         self.pb.title(f"Quantizing {module.name} in layer ").draw()
-        qqq = self.tasks
+        gptq = self.tasks
 
         # logger.info(f"Quantizing module START: {name}, {gptq[name].shape()}")
         ## Need to return the quantized_weight for offloading
-        g = qqq[module.name]
+        g = gptq[module.name]
         wq, scale, zero, g_idx, duration, avg_loss, damp_percent, scale_extra, nsamples = g.quantize()
         ## Assign the quantized weight to the weight
         #gptq[name].layer.weight.data = q_full_weight.to(device=gptq[name].device)
@@ -199,6 +203,25 @@ class QQQProcessor(LoopProcessor):
         return True
 
     def finalize(self, model: BaseGPTQModel, **kwargs):
+        # block for streams
+        if self.stream:
+            torch_sync()
+
+        model.qlinear_kernel = pack_model(
+            model=model.model,
+            quant_result=self.results(),
+            bits=self.qcfg.bits,
+            group_size=self.qcfg.group_size,
+            backend=BACKEND.QQQ,
+            desc_act=self.qcfg.desc_act,
+            format=self.qcfg.format,
+            quant_method=self.qcfg.quant_method,
+            lm_head_name=model.lm_head,
+            dynamic=self.qcfg.dynamic,
+            parallel_packing=self.qcfg.parallel_packing,
+            pack_dtype=self.qcfg.pack_dtype,
+        )
+
         # set quantized state
         model.quantized = True
 
