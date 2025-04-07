@@ -25,7 +25,8 @@ from ..utils.logger import setup_logger
 log = setup_logger()
 
 if not os.environ.get("PYTORCH_CUDA_ALLOC_CONF", None):
-    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = 'expandable_segments:True'
+    # TODO: need to check if hyper aggressive gc at 4% of ( inactive / reserved mem ) for cuda gc has impact on oom and performance
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = 'expandable_segments:True,garbage_collection_threshold:0.04'
     log.info("ENV: Auto setting PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' for memory saving.")
 
 if not os.environ.get("CUDA_DEVICE_ORDER", None):
