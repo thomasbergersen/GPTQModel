@@ -462,7 +462,8 @@ class ModuleLooper():
                     if packed:
                         file_index += 1
 
-                if p_index == len(self.processors) - 1:
+                # reload model every 3 layers
+                if p_index == len(self.processors) - 1 and layer_index > 0 and layer_index % 3 == 0:
                     del module
 
                     # release all modules memory
@@ -470,12 +471,13 @@ class ModuleLooper():
                     del self.gptq_model.model
                     torch_empty_cache()
 
-                    log.info("Reload model...")
+                    log.info("Quantization: Reload model...")
+                    start = time.time()
                     self.gptq_model.model = self.gptq_model.model_init_func()
                     layers = get_module_by_name_prefix(self.gptq_model.model, self.gptq_model.layers_node)
                     # replace linear with hooked linear
                     replace_linear_with_hooked_linear(self.gptq_model.model)
-                    log.info("Reload model finish")
+                    log.info(f"Quantization: Reload model complete: took {time.time()-start} seconds")
 
                 if auto_gc:
                     torch_empty_cache()
