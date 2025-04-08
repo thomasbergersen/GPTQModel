@@ -20,7 +20,7 @@ from ..base import BaseGPTQModel
 
 class DeepSeekV3GPTQ(BaseGPTQModel):
     # deepseek_v3 requires custom model code
-    require_trust_remote_code = False
+    require_trust_remote_code = True
 
     require_fast_init = False
 
