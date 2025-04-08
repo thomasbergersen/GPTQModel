@@ -572,7 +572,9 @@ def pack_module(name, qModules, quant_result: Dict[str, Dict[str, Any]], layers,
             qModules[name].pack(linear=layers[name], scales=scale, s_extra=scale_extra)
         else:
             qModules[name].pack(linear=layers[name], scales=scale, zeros=zero, g_idx=g_idx)
-        qModules[name].to(layer_device)
+
+        # TODO: why move it back to gpu?
+        # qModules[name].to(layer_device)
 
 
 def pack_model(
@@ -627,12 +629,7 @@ def pack_model(
 
     names = list(qModules.keys())
 
-    if parallel_packing:
-        max_workers = 2
-    else:
-        max_workers = 1
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with ThreadPoolExecutor(max_workers=2 if parallel_packing else 1) as executor:
         with log.pb(names).manual() as pb:
             def wrapper(name):
                 # TODO FIX, thread pool executor does not advance iterator
