@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import gc as py_gc
+from contextlib import nullcontext
 from typing import Callable, Union
 
 import torch
@@ -27,7 +28,9 @@ HAS_XPU = False
 HAS_MPS = False
 HAS_MLX = False
 
-STREAM = None # cache
+STREAMS = []
+STREAMS_INDEX = 0
+MAX_STREAMS = 8
 
 log = setup_logger()
 
@@ -40,9 +43,13 @@ if torch._dynamo.config.cache_size_limit < 128:
 
 if hasattr(torch, "cuda") and hasattr(torch.cuda, "is_available") and torch.cuda.is_available():
     HAS_CUDA = True
+    for i in range(MAX_STREAMS):
+        STREAMS.append(torch.cuda.Stream())
 
 if hasattr(torch, "xpu") and hasattr(torch.xpu, "is_available") and torch.xpu.is_available():
     HAS_XPU = True
+    for i in range(MAX_STREAMS):
+        STREAMS.append(torch.xpu.Stream())
 
 if hasattr(torch, "mps") and hasattr(torch.mps, "is_available") and torch.mps.is_available():
     HAS_MPS = True
@@ -66,24 +73,26 @@ def torch_compile(module: Union[torch.nn.Module, Callable], backend:str ="induct
         return module
 
 def torch_new_stream():
-    global STREAM
-    if STREAM is None:
-        return STREAM
+    # if HAS_CUDA:
+    #     return torch.cuda.Stream()
+    # if HAS_XPU:
+    #     return torch.xpu.Stream()
+    # #
+    global STREAMS, STREAMS_INDEX
+    if len(STREAMS) == 0:
+        return None
 
-    if HAS_CUDA:
-        STREAM = torch.cuda.Stream()
-        return STREAM
-    if HAS_XPU:
-        STREAM = torch.xpu.Stream()
-        return STREAM
-    return None
+    stream =  STREAMS[STREAMS_INDEX]
+    STREAMS_INDEX = STREAMS_INDEX + 1 if STREAMS_INDEX < len(STREAMS) - 1 else 0
+    return stream
+
 
 def torch_new_stream_ctx():
     if HAS_CUDA:
         return torch.cuda.stream(torch_new_stream())
     if HAS_XPU:
         return torch.xpu.Stream(torch_new_stream())
-    return None
+    return nullcontext()
 
 def torch_sync(device: torch.device = None):
     # check all backends

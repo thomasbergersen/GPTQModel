@@ -199,6 +199,10 @@ class QQQProcessor(LoopProcessor):
         module.state.pop("w", None) # no need for original weights now
 
     def module_finalize(self, model: BaseGPTQModel, module: Module, **kwargs):
+        # block for streams
+        if self.stream:
+            torch_sync()
+
         self.pack_layer(model, module, **kwargs)
         return True
 

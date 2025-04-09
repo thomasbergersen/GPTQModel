@@ -33,7 +33,7 @@ from ..quantization.config import QUANT_METHOD, QuantizeConfig
 from ..quantization.gptq import CPU, CUDA_0, CUDA_1
 from ..utils.logger import setup_logger
 from ..utils.model import move_to, pack_model
-from ..utils.torch import torch_empty_cache, torch_sync
+from ..utils.torch import HAS_CUDA, STREAMS, torch_empty_cache, torch_sync
 
 log = setup_logger()
 
@@ -49,6 +49,7 @@ class GPTQProcessor(LoopProcessor):
 
         self.retain_w = retain_w
         self.avg_losses = []
+        self.stream = len(STREAMS) > 0
 
     def log_plotly(self):
         task = self.logger_task
@@ -225,6 +226,10 @@ class GPTQProcessor(LoopProcessor):
         module.state.pop("w", None) # no need for original weights now
 
     def module_finalize(self, model: BaseGPTQModel, module: Module, **kwargs):
+        # block for streams
+        if self.stream:
+            torch_sync()
+
         self.pack_layer(model, module, **kwargs)
         return True
 

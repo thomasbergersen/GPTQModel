@@ -323,10 +323,6 @@ class LoopProcessor:
         metadata = kwargs.pop("metadata")
         backend: BACKEND = kwargs.pop("backend")
 
-        # block for streams
-        if self.stream:
-            torch_sync()
-
         prefix = f"{model.layers_node}.{layer_index}."
         layer_quant_result = {}
         for k, v in self.results().items():

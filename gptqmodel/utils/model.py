@@ -26,6 +26,7 @@ import re
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, Type
 
@@ -107,21 +108,22 @@ def move_to(obj: torch.Tensor | nn.Module, device: torch.device, dtype: torch.dt
                 raise NotImplementedError(
                     f"Streaming `move_to` is not supported for non-Tensors: actual = `{obj.__class__.__name__}`")
 
+            # cpu to non-cpu or non-cpu to non-cpu  uses normal .to() api
+            # with torch_new_stream_ctx():
+            #     obj = obj.to(device=device, dtype=dtype, non_blocking=True)
+
+            streamCtx = torch_new_stream_ctx()
             if device == CPU:
                 # print(f" streaming from non-CPU to CPU...nonblocking")
-                obj_copy = torch.zeros_like(obj, device=CPU, pin_memory=True)
-                streamCtx = torch_new_stream_ctx()
-                if streamCtx:
-                    # use streaming context with pinned cpu memory
-                    with streamCtx:
-                        obj_copy.copy_(obj, non_blocking=True)
-                    return obj_copy
-                else:
-                    # does not support streaming context
-                    obj = obj.to(device=device, non_blocking=True)
+                obj_copy = torch.zeros_like(obj, device=CPU, dtype=dtype, pin_memory=True)
+
+                with streamCtx:
+                    obj_copy.copy_(obj, non_blocking=True)
+                return obj_copy
             else:
                 # cpu to non-cpu or non-cpu to non-cpu  uses normal .to() api
-                obj = obj.to(device=device, non_blocking=True)
+                with streamCtx:
+                     obj = obj.to(device=device,  dtype=dtype, non_blocking=True)
         else:
             obj = obj.to(device=device, dtype=dtype, non_blocking=False)
 
