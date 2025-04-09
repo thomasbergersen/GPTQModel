@@ -464,7 +464,7 @@ class ModuleLooper():
                         file_index += 1
 
                 # reload model every 3 layers
-                if p_index == len(self.processors) - 1 and layer_index > 0 and layer_index % 3 == 0:
+                if p_index == len(self.processors) - 1 or (layer_index > 0 and layer_index % 3 == 0):
                     del module
 
                     # release all modules memory

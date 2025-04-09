@@ -312,17 +312,17 @@ class GPTQ:
 
                 with lock:
                     # print(f"H SHAPE: {H.shape}")
-                    H = torch.linalg.cholesky(H)
+                    # H = torch.linalg.cholesky(H)
 
-                    try:
+                    # try:
                         # H = self.block_cholesky_inverse(H, block_size=H.shape[0])
-                        H = torch.cholesky_inverse(H)
-                    except torch.OutOfMemoryError:
-                        # half the block size will use ~18% less memory but at higher accuracy loss: 1^-2 vs 1^-8
-                        # worth the tradeoff since it's either oom or slightly higher accuracy loss
-                        H = self.block_cholesky_inverse(H, block_size=self.columns // 2)
-                        log.warn(
-                            "Quantization: OOM bypassed via low memory math at a cost of lower accuracy: `cholesky_inverse`")
+                    H = torch.cholesky_inverse(torch.linalg.cholesky(H))
+                    # except torch.OutOfMemoryError:
+                    #     # half the block size will use ~18% less memory but at higher accuracy loss: 1^-2 vs 1^-8
+                    #     # worth the tradeoff since it's either oom or slightly higher accuracy loss
+                    #     H = self.block_cholesky_inverse(H, block_size=self.columns // 2)
+                    #     log.warn(
+                    #         "Quantization: OOM bypassed via low memory math at a cost of lower accuracy: `cholesky_inverse`")
 
                     Hinv = torch.linalg.cholesky(H, upper=True)
                 break
