@@ -170,6 +170,7 @@ jobs:
           echo "CUDA_VERSION=$cuda_ver" >> $GITHUB_ENV
           echo "TORCH_VERSION=$torch_ver" >> $GITHUB_ENV
           echo "PY_VERSION=$python_ver" >> $GITHUB_ENV
+          echo "MAX_JOBS=$(nproc)" >> $GITHUB_ENV
 
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
