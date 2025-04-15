@@ -159,12 +159,22 @@ jobs:
           echo "TORCH_VERSION=$torch_ver" >> $GITHUB_ENV
           echo "PY_VERSION=$python_ver" >> $GITHUB_ENV
 
+      - name: Clean cache
+        run: |
+          rm -rf /home/runner/work/_temp/* || true
+          rm -rf ./cuda_*  || true
+
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
         with:
           cuda: '${{ env.CUDA_VERSION }}'
           log-file-suffix: '${{ matrix.tag }}-${{matrix.os}}.txt'
 
+      - name: Clean cache
+        run: |
+          ls -ahl .
+          rm -rf /home/runner/work/_temp/* || true
+          rm -rf ./cuda_*  || true
 
       - name: Checkout Codes
         uses: actions/checkout@v4
