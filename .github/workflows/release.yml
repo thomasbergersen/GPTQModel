@@ -131,7 +131,7 @@ jobs:
           echo "task_list=$list_1" >> "$GITHUB_OUTPUT"
 
   release:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJson(needs.check-vm.outputs.max-parallel).size || 10 }}
