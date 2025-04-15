@@ -213,6 +213,7 @@ jobs:
           python_version=$(echo ${{ matrix.tag }} | grep -oP 'python\K[0-9.]+')
           pip install uv
           .github/scripts/init_compiler.sh $cuda_version $torch_version $python_version
+          pip cache purge && uv cache clean
 
       - name: Compile
         run: python setup.py bdist_wheel

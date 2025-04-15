@@ -111,7 +111,7 @@ setup_environment() {
   whereis pip
   pip show torch
   pip list
-  pip cache purge
+  pip cache purge && uv cache clean
   rm -rf /tmp/init
 }
 
