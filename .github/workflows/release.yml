@@ -214,6 +214,7 @@ jobs:
           pip install uv
           .github/scripts/init_compiler.sh $cuda_version $torch_version $python_version
           pip cache purge && uv cache clean
+          du -h --max-depth=1 /
 
       - name: Compile
         run: python setup.py bdist_wheel
