@@ -131,18 +131,56 @@ jobs:
           echo "task_list=$list_1" >> "$GITHUB_OUTPUT"
 
   release:
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: ${{ fromJson(needs.check-vm.outputs.max-parallel).size || 10 }}
       matrix:
         tag: ${{ fromJSON(needs.check-vm.outputs.task_list) }}
-    runs-on: [self-hosted, xeon5 ]
     needs:
       - check-vm
     if: needs.check-vm.outputs.task_list != '' && !cancelled()
-    container:
-      image: ${{ needs.check-vm.outputs.ip }}:5000/modelcloud/gptqmodel:${{ matrix.tag }}
+#    container:
+#      image: ${{ needs.check-vm.outputs.ip }}:5000/modelcloud/gptqmodel:${{ matrix.tag }}
+    # compiler_cuda121-torch2.1.2-python39)
     steps:
+      - name: Parse tag
+        run: |
+          declare -A version_names
+          version_names["118"]="11.8.0"
+          version_names["121"]="12.1.1"
+          version_names["124"]="12.4.1"
+          version_names["126"]="12.6.3"
+
+          tag=${{ matrix.tag }}
+
+          cuda_ver=$(echo "$tag" | sed -n 's/.*cuda\([0-9]\+\).*/\1/p')
+          cuda_ver="${version_names[$cuda_ver]}"
+
+          torch_ver=$(echo "$tag" | sed -n 's/.*torch\([0-9.]\+\).*/\1/p')
+
+          python_raw=$(echo "$tag" | sed -n 's/.*python\([0-9]\+\).*/\1/p')
+          python_ver="${python_raw:0:1}.${python_raw:1}"
+
+          echo "CUDA: $cuda_ver"
+          echo "Torch: $torch_ver"
+          echo "Python: $python_ver"
+
+          echo "CUDA_VERSION=$cuda_ver" >> $GITHUB_ENV
+          echo "TORCH_VERSION=$torch_ver" >> $GITHUB_ENV
+          echo "PY_VERSION=$python_ver" >> $GITHUB_ENV
+
+      - uses: Jimver/cuda-toolkit@master
+        id: cuda-toolkit
+        with:
+          cuda: ${ env.CUDA_VERSION }
+          log-file-suffix: '${{matrix.os}}.txt'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${ env.PY_VERSION }
+          cache: 'pip'
+
       - name: Checkout Codes
         uses: actions/checkout@v4
         with:
@@ -174,7 +212,8 @@ jobs:
           cuda_version=$(echo ${{ matrix.tag }} | grep -oP 'cuda\K[0-9.]+')
           torch_version=$(echo ${{ matrix.tag }} | grep -oP 'torch\K[0-9.]+')
           python_version=$(echo ${{ matrix.tag }} | grep -oP 'python\K[0-9.]+')
-          # bash -c "$(curl -L http://${RUNNER}/scripts/env/init_compiler.sh)" @ $cuda_version $torch_version $python_version
+          pip install uv
+          .github/scripts/init_compiler.sh @ $cuda_version $torch_version $python_version
 
       - name: Compile
         run: python setup.py bdist_wheel
@@ -219,8 +258,8 @@ jobs:
     runs-on: [self-hosted, xeon5 ]
     needs:
       - check-vm
-    container:
-      image: ${{ needs.check-vm.outputs.ip }}:5000/modelcloud/gptqmodel:compiler_cuda124-torch2.4.1-python311
+#    container:
+#      image: ${{ needs.check-vm.outputs.ip }}:5000/modelcloud/gptqmodel:compiler_cuda124-torch2.4.1-python311
     env:
       RELEASE_MODE: 0
     steps:
