@@ -177,10 +177,6 @@ jobs:
           cuda: '${{ env.CUDA_VERSION }}'
           log-file-suffix: '${{ matrix.tag }}-${{matrix.os}}.txt'
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PY_VERSION }}
-          cache: 'pip'
 
       - name: Checkout Codes
         uses: actions/checkout@v4
@@ -196,6 +192,11 @@ jobs:
           git config --global --add safe.directory $(pwd)
           git fetch origin pull/${PR_NUMBER}/head:pr-${PR_NUMBER}
           git checkout pr-${PR_NUMBER}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PY_VERSION }}
+          cache: 'pip'
 
       - name: Print Env
         run: |
