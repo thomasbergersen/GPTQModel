@@ -161,8 +161,11 @@ jobs:
 
       - name: Clean cache
         run: |
+          df -h
+          ls -ahl .
           rm -rf /home/runner/work/_temp/* || true
           rm -rf ./cuda_*  || true
+          df -h
 
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
@@ -172,9 +175,12 @@ jobs:
 
       - name: Clean cache
         run: |
+          df -h
           ls -ahl .
           rm -rf /home/runner/work/_temp/* || true
           rm -rf ./cuda_*  || true
+          df -h
+
 
       - name: Checkout Codes
         uses: actions/checkout@v4
