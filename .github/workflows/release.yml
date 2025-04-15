@@ -228,6 +228,10 @@ jobs:
           twine check dist/$whl
           pip install dist/$whl
 
+      - name: Install requirements
+        if: always()
+        run: |
+          df -h
 #      - name: Upload wheel
 #        continue-on-error: true
 #        run: |
