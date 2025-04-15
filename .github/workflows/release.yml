@@ -219,6 +219,11 @@ jobs:
       - name: Compile
         run: python setup.py bdist_wheel
 
+      - name: show disk
+        if: always()
+        run: |
+          df -h
+
       - name: Test install
         run: |
           ls -ahl dist
@@ -228,10 +233,6 @@ jobs:
           twine check dist/$whl
           pip install dist/$whl
 
-      - name: Install requirements
-        if: always()
-        run: |
-          df -h
 #      - name: Upload wheel
 #        continue-on-error: true
 #        run: |
