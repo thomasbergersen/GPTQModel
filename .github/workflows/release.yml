@@ -217,7 +217,7 @@ jobs:
           df -h
 
       - name: Compile
-        run: python -m build --wheel
+        run: python setup.py bdist_wheel
 
       - name: Test install
         run: |
