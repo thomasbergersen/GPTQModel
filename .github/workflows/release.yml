@@ -174,12 +174,12 @@ jobs:
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
         with:
-          cuda: ${ env.CUDA_VERSION }
+          cuda: ${{ env.CUDA_VERSION }}
           log-file-suffix: '${{matrix.os}}.txt'
 
       - uses: actions/setup-python@v5
         with:
-          python-version: ${ env.PY_VERSION }
+          python-version: ${{ env.PY_VERSION }}
           cache: 'pip'
 
       - name: Checkout Codes
