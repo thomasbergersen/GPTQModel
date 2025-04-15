@@ -56,7 +56,7 @@ env:
   GPTQMODEL_FORCE_BUILD: 1
   repo: ${{ github.event.inputs.repo || github.repository }}
   ref: ${{ github.event.inputs.ref || github.ref }}
-  MAX_JOBS: 2
+  MAX_JOBS: 1
 
 concurrency:
   group: ${{ github.event.inputs.ref || github.ref }}-workflow-release
