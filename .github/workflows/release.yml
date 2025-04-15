@@ -200,8 +200,6 @@ jobs:
 
       - name: Print Env
         run: |
-          echo "== pyenv =="
-          pyenv versions
           echo "== python =="
           python --version
           echo "== nvcc =="
