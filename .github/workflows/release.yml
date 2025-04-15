@@ -104,7 +104,7 @@ jobs:
           input="${{ github.event.inputs.target }}"
 
           if [[ -z "$input" ]]; then
-            server_lists=$(curl -s "http://${RUNNER}/gpu/runner/docker?json=1")
+            server_lists="["compiler_cuda118-torch2.0.1-python39", "compiler_cuda118-torch2.0.1-python310", "compiler_cuda118-torch2.0.1-python311", "compiler_cuda118-torch2.1.2-python39", "compiler_cuda118-torch2.1.2-python310", "compiler_cuda118-torch2.1.2-python311", "compiler_cuda121-torch2.1.2-python39", "compiler_cuda121-torch2.1.2-python310", "compiler_cuda121-torch2.1.2-python311", "compiler_cuda118-torch2.2.2-python39", "compiler_cuda118-torch2.2.2-python310", "compiler_cuda118-torch2.2.2-python311", "compiler_cuda118-torch2.2.2-python312", "compiler_cuda121-torch2.2.2-python39", "compiler_cuda121-torch2.2.2-python310", "compiler_cuda121-torch2.2.2-python311", "compiler_cuda121-torch2.2.2-python312", "compiler_cuda118-torch2.3.1-python39", "compiler_cuda118-torch2.3.1-python310", "compiler_cuda118-torch2.3.1-python311", "compiler_cuda118-torch2.3.1-python312", "compiler_cuda121-torch2.3.1-python39", "compiler_cuda121-torch2.3.1-python310", "compiler_cuda121-torch2.3.1-python311", "compiler_cuda121-torch2.3.1-python312", "compiler_cuda118-torch2.4.1-python39", "compiler_cuda118-torch2.4.1-python310", "compiler_cuda118-torch2.4.1-python311", "compiler_cuda118-torch2.4.1-python312", "compiler_cuda121-torch2.4.1-python39", "compiler_cuda121-torch2.4.1-python310", "compiler_cuda121-torch2.4.1-python311", "compiler_cuda121-torch2.4.1-python312", "compiler_cuda118-torch2.5.1-python39", "compiler_cuda118-torch2.5.1-python310", "compiler_cuda118-torch2.5.1-python311", "compiler_cuda118-torch2.5.1-python312", "compiler_cuda118-torch2.5.1-python313", "compiler_cuda121-torch2.5.1-python39", "compiler_cuda121-torch2.5.1-python310", "compiler_cuda121-torch2.5.1-python311", "compiler_cuda121-torch2.5.1-python312", "compiler_cuda121-torch2.5.1-python313", "compiler_cuda124-torch2.5.1-python39", "compiler_cuda124-torch2.5.1-python310", "compiler_cuda124-torch2.5.1-python311", "compiler_cuda124-torch2.5.1-python312", "compiler_cuda124-torch2.5.1-python313", "compiler_cuda126-torch2.6.0-python39", "compiler_cuda126-torch2.6.0-python310", "compiler_cuda126-torch2.6.0-python311", "compiler_cuda126-torch2.6.0-python312", "compiler_cuda126-torch2.6.0-python313", "compiler_cuda128-torch2.6.0-python39", "compiler_cuda128-torch2.6.0-python310", "compiler_cuda128-torch2.6.0-python311", "compiler_cuda128-torch2.6.0-python312", "compiler_cuda128-torch2.6.0-python313"]+[]"
             echo "lists=$server_lists"
 
             IFS=$'+' read -r list_1 list_2 <<< "$server_lists"
@@ -151,6 +151,7 @@ jobs:
           version_names["121"]="12.1.1"
           version_names["124"]="12.4.1"
           version_names["126"]="12.6.3"
+          version_names["128"]="12.8.0"
 
           tag=${{ matrix.tag }}
 
