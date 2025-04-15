@@ -175,7 +175,7 @@ jobs:
         id: cuda-toolkit
         with:
           cuda: '${{ env.CUDA_VERSION }}'
-          log-file-suffix: '${{matrix.os}}.txt'
+          log-file-suffix: '${{ matrix.tag }}-${{matrix.os}}.txt'
 
       - uses: actions/setup-python@v5
         with:
