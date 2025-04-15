@@ -103,7 +103,7 @@ setup_environment() {
   install_torch $cuda_version $torch_version $python_version
 
   echo "Installing pytest twine wheel"
-  uv pip install twine --system
+  uv pip install twine build --system
 
   install_torch $cuda_version $torch_version $python_version
 

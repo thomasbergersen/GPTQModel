@@ -217,7 +217,7 @@ jobs:
           du -h --max-depth=1 /
 
       - name: Compile
-        run: python setup.py bdist_wheel
+        run: python -m build --wheel
 
       - name: Test install
         run: |
