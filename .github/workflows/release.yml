@@ -174,7 +174,7 @@ jobs:
       - uses: Jimver/cuda-toolkit@master
         id: cuda-toolkit
         with:
-          cuda: ${{ env.CUDA_VERSION }}
+          cuda: '${{ env.CUDA_VERSION }}'
           log-file-suffix: '${{matrix.os}}.txt'
 
       - uses: actions/setup-python@v5
