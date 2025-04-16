@@ -14,19 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from ..base import BaseGPTQModel
+from model_test import ModelTest
 
 
-class XverseGPTQ(BaseGPTQModel):
-    require_pkgs_version = ["transformers<=4.38.2", "tokenizers<=0.15.2"]
-    base_modules = ["model.embed_tokens", "model.norm"]
-    pre_lm_head_norm_module = "model.norm"
+class TestPhi_4(ModelTest):
+    NATIVE_MODEL_ID = "/monster/data/model/Phi-4-multimodal-instruct" # "microsoft/Phi-3-mini-4k-instruct"
+    NATIVE_ARC_CHALLENGE_ACC = 0.5401
+    NATIVE_ARC_CHALLENGE_ACC_NORM = 0.5674
+    APPLY_CHAT_TEMPLATE = True
+    TRUST_REMOTE_CODE = True
+    DISABLE_FLASH_ATTN = True
+    BATCH_SIZE = 1
 
-    layers_node = ["model.layers"]
-    layer_type = "XverseDecoderLayer"
-    layer_modules = [
-        ["self_attn.k_proj", "self_attn.v_proj", "self_attn.q_proj"],
-        ["self_attn.o_proj"],
-        ["mlp.up_proj", "mlp.gate_proj"],
-        ["mlp.down_proj"],
-    ]
+    def test_phi_4(self):
+        self.quant_lm_eval()

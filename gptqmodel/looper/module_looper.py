@@ -25,11 +25,12 @@ from ..looper.gptq_processor import GPTQProcessor
 from ..looper.input_cache import InputCache
 from ..looper.loop_processor import LoopProcessor
 from ..looper.named_module import NamedModule
+from ..looper.native_processor import NativeProcessor
 from ..models import BaseGPTQModel
 from ..models._const import SUPPORTS_MODULE_TYPES
 from ..models.writer import save_module
-from ..nn_modules.hooked_linear import replace_linear_with_hooked_linear
-from ..quantization.gptq import CPU, CUDA_0, CUDA_1
+from ..nn_modules.hooked_linear import replace_module_with_hooked_legacy, replace_module_with_hooked_tree
+from ..quantization.gptq import CPU, DEVICE_0, DEVICE_1
 from ..utils.logger import setup_logger
 from ..utils.model import (find_modules, get_device, get_module, get_module_by_name_prefix,
                            get_moe_layer_modules, move_to, nested_move_to)
@@ -87,7 +88,7 @@ class ModuleLooper():
         layers[0] = layers[0].to(self.gptq_model.quantize_config.device)
         ori_outside_layer_module_devices = {}
         for module_name in self.gptq_model.base_modules:
-            module = get_module_by_name_prefix(self.gptq_model.model, module_name)
+            module, _ = get_module_by_name_prefix(self.gptq_model.model, [module_name])
 
             if module is None:
                 continue
@@ -120,7 +121,7 @@ class ModuleLooper():
         handle.remove()
         move_to(layers[0], device=CPU)
         for module_name in self.gptq_model.base_modules:
-            module = get_module_by_name_prefix(self.gptq_model.model, module_name)
+            module, _ = get_module_by_name_prefix(self.gptq_model.model, [module_name])
             if module is not None:
                 move_to(module, device=ori_outside_layer_module_devices[module_name])
         if auto_gc:
@@ -154,11 +155,12 @@ class ModuleLooper():
         forward_pass_use_cache = self.gptq_model.model.config.use_cache if hasattr(self.gptq_model.model.config, "use_cache") else False
         self.gptq_model.model.config.use_cache = False
 
-        layers = get_module_by_name_prefix(self.gptq_model.model, self.gptq_model.layers_node)
+        layers, layers_prefix = get_module_by_name_prefix(self.gptq_model.model, self.gptq_model.layers_node)
 
         for p_index, processor in enumerate(self.processors):
             if not processor.verify_calibration_dataset(p_index):
-                if isinstance(processor, EoraProcessor):
+                if isinstance(processor, EoraProcessor) or\
+                        (isinstance(processor, GPTQProcessor) and self.gptq_model.quantize_config.v2):
                     prev_processor = self.processors[p_index - 1]
                     processor.set_calibration_dataset(prev_processor.calibration_dataset)
                     # If calibration_dataset is None or Empty, the input_cache of the previous processor is used.
@@ -189,7 +191,7 @@ class ModuleLooper():
             num_experts = getattr(self.gptq_model.model.config, self.gptq_model.dynamic_expert_index)
             layer_modules = get_moe_layer_modules(layer_modules=self.gptq_model.layer_modules,
                                                   num_experts=num_experts)
-
+        # TODO doc/reloader
         weight_map = {}
         metadata = {
             "total_size": 0
@@ -226,8 +228,11 @@ class ModuleLooper():
 
         shared_kv_cache_dict = {}
 
-        # replace linear with hooked linear
-        replace_linear_with_hooked_linear(self.gptq_model.model)
+        # replace quantizable modules with hooked version
+        if self.gptq_model.layers_modules_tree:
+            replace_module_with_hooked_tree(self.gptq_model.model, self.gptq_model.layers_modules_tree, debug=False)
+        else:
+            replace_module_with_hooked_legacy(self.gptq_model.model)
 
         for layer_index in quant_modules_pb:
             is_lm_head_module = layer_index >= layer_count
@@ -260,6 +265,14 @@ class ModuleLooper():
                 attention_masks = processor.inputs_cache.attention_masks
 
                 processed_subset = {}
+
+                modules = [[self.gptq_model.lm_head]] if is_lm_head_module else layer_modules
+
+                # for NativeProcessor we process one time forward on all grouped module subsets
+                if processor.fwd_all_modules_in_single_pass:
+                    # merge all subsets into one
+                    modules = [sum(modules, [])]
+
                 for index, names in enumerate(modules):
                     subset = {}
                     for n in names:
@@ -274,7 +287,7 @@ class ModuleLooper():
                     skipped_modules = []
 
                     for name in subset:
-                        layer_name = self.gptq_model.lm_head if is_lm_head_module else f"{self.gptq_model.layers_node}.{layer_index}.{name}"
+                        layer_name = self.gptq_model.lm_head if is_lm_head_module else f"{layers_prefix}.{layer_index}.{name}"
 
                         # gptq task is created and stored inside processor
                         if not isinstance(subset[name], NamedModule):
@@ -301,7 +314,9 @@ class ModuleLooper():
                         continue
 
                     handle = []
+                    # log.info(f"Subset = {subset}")
                     for name in subset:
+                        # log.info(f"Loop name = {name}")
                         if hasattr(subset[name], 'forward_hook'):
                             subset[name].forward_hook = processor.preprocess_fwd_hook(name)
                         else:
@@ -311,8 +326,10 @@ class ModuleLooper():
 
                     # logger.info(f"layer-{i}: Begin Forward() Pass")
                     fwd_start = time.time()
+                    layer_outputs = []
                     for j in range(processor.num_batches):
                         layer_input = []
+                        # log.info(f"batch: {processor.num_batches}, j = {j}, layer_inputs = {layer_inputs}")
                         for k, layer_inp in enumerate(layer_inputs[j]):
                             layer_input.append(move_to(layer_inp, device=cur_layer_device))
 
@@ -339,11 +356,22 @@ class ModuleLooper():
                             if shared_kv_cache_dict.get(layer_index) is None:
                                 shared_kv_cache_dict[layer_index] = layer_output[-1]
                         else:
-                            module(*layer_input) if is_lm_head_module else module(*layer_input,
+                            layer_output = module(*layer_input) if is_lm_head_module else module(*layer_input,
                                                                                   **additional_layer_inputs)
+
+                        # For Native processor, we can update processor input here
+                        # if second forward is not required, this/first forward output is captured as input for next loop
+                        if not processor.fwd_after_process:
+                            layer_outputs.append([layer_output[0]])
 
                         del layer_input
                         del additional_layer_inputs
+
+                    # Native processor does not need to run a second forward pass, the output of the first pass is
+                    # directly saved and used as input for the next loop.
+                    if not processor.fwd_after_process:
+                        processor.receive_layer_inputs(layer_outputs)
+                        del layer_outputs
 
                     fwd_end = time.time()
                     fwd_time = fwd_end - fwd_start
@@ -393,13 +421,15 @@ class ModuleLooper():
                     #
                     #     pool.map(process_module, subset.keys())
 
-                    if index == len(layer_modules) - 1:
+                    if index == len(modules) - 1:
                         if auto_gc:
                             torch_empty_cache()
 
                 is_last_module = layer_index == len(quant_modules_pb) - 1
-                layer_outputs = []
-                if not is_last_module:
+                # Native processor does not need second forward pass after layer quantization
+                # this is the second forward after process()
+                if not is_last_module and processor.fwd_after_process:
+                    layer_outputs = []
                     for j in range(processor.num_batches):
                         # assert weight
                         # if isinstance(processor, EoraProcessor):
@@ -449,9 +479,11 @@ class ModuleLooper():
                     else:
                         self.gptq_model.post_quantize(module)
 
-                processor.clear_cache_data()
-
-                processor.receive_layer_inputs(layer_outputs)
+                # This is second forward outputs captured for input of next loop
+                # Native processor does not need second forward and already captured output from first forward
+                if processor.fwd_after_process:
+                    processor.clear_cache_data()
+                    processor.receive_layer_inputs(layer_outputs)
 
                 # if last processor, we need to call finalize in reverse
                 if p_index == len(self.processors) - 1:
@@ -509,7 +541,7 @@ class ModuleLooper():
 
             processor_name = reverse_p.name()
             total_log[processor_name] = reverse_p.log
-            if processor_name == "gptq":
+            if processor_name in ["gptq", "gptq v2"]:
                 self.gptq_model.quant_log = reverse_p.log
 
             for module_log in reverse_p.log:
@@ -517,7 +549,6 @@ class ModuleLooper():
             reverse_p.log_plotly()
 
             reverse_p.finalize(model=self.gptq_model, **kwargs)
-
 
         self.gptq_model.model.config.use_cache = forward_pass_use_cache
 

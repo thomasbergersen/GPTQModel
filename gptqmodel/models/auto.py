@@ -105,6 +105,7 @@ from .definitions.opt import OPTGPTQ  # noqa: E402
 from .definitions.ovis import OvisGPTQ  # noqa: E402
 from .definitions.phi import PhiGPTQ  # noqa: E402
 from .definitions.phi3 import Phi3GPTQ, PhiMoEGPTQForCausalLM  # noqa: E402
+from .definitions.phi4 import Phi4MMGPTQ  # noqa: E402
 from .definitions.qwen import QwenGPTQ  # noqa: E402
 from .definitions.qwen2 import Qwen2GPTQ  # noqa: E402
 from .definitions.qwen2_5_vl import Qwen2_5_VLGPTQ  # noqa: E402
@@ -163,6 +164,7 @@ MODEL_MAP = {
     "gemma3_text": Gemma3GPTQ,
     "phi": PhiGPTQ,
     "phi3": Phi3GPTQ,
+    "phi4mm": Phi4MMGPTQ,
     "phimoe": PhiMoEGPTQForCausalLM,
     "mpt": MPTGPTQ,
     "minicpm": MiniCPMGPTQ,
@@ -332,8 +334,8 @@ class GPTQModel:
             cls,
             model_or_id_or_path: str=None,
             tokenizer: Union[PreTrainedTokenizerBase, Tokenicer]=None,
-            tasks: Union[EVAL.LM_EVAL, EVAL.EVALPLUS, List[EVAL.LM_EVAL], List[EVAL.EVALPLUS], EVAL.MMLUPRO, List[EVAL.MMLUPRO]] = None, # set to None to fix mutable warning
-            framework: Union[Type[EVAL.LM_EVAL],Type[EVAL.EVALPLUS],Type[EVAL.MMLUPRO]] = EVAL.LM_EVAL,
+            tasks: Union[EVAL.LM_EVAL, EVAL.EVALPLUS, List[EVAL.LM_EVAL], List[EVAL.EVALPLUS], EVAL.MMLU_PRO, List[EVAL.MMLU_PRO]] = None, # set to None to fix mutable warning
+            framework: Union[Type[EVAL.LM_EVAL],Type[EVAL.EVALPLUS],Type[EVAL.MMLU_PRO]] = EVAL.LM_EVAL,
             batch_size: Union[int, str] = 1,
             trust_remote_code: bool = False,
             output_path: Optional[str] = None,
@@ -350,8 +352,8 @@ class GPTQModel:
         if tasks is None:
             if framework == EVAL.LM_EVAL:
                 tasks = [EVAL.LM_EVAL.ARC_CHALLENGE]
-            if framework == EVAL.MMLUPRO:
-                tasks = [EVAL.MMLUPRO.MATH]
+            if framework == EVAL.MMLU_PRO:
+                tasks = [EVAL.MMLU_PRO.MATH]
             else:
                 tasks = [EVAL.EVALPLUS.HUMAN]
 
@@ -368,6 +370,7 @@ class GPTQModel:
             raise ValueError('Eval framework support llm_backend: [gptqmodel, vllm]')
 
         if isinstance(model_or_id_or_path, str):
+            log.info(f"Eval: loading using backend = `{backend}`")
             model = GPTQModel.load(model_id_or_path=model_or_id_or_path, backend=backend)
             model_id_or_path = model_or_id_or_path
         elif isinstance(model_or_id_or_path, BaseGPTQModel) or isinstance(model_or_id_or_path, (PreTrainedModel, PeftModel)):
@@ -484,7 +487,7 @@ class GPTQModel:
             evalplus_make_table(results)
             print('--------evalplus Result End---------')
             return results
-        elif framework == EVAL.MMLUPRO:
+        elif framework == EVAL.MMLU_PRO:
             for task in tasks:
                 if task not in EVAL.get_task_enums():
                     raise ValueError(f"eval support tasks: {EVAL.get_all_tasks_string()}")

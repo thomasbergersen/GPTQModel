@@ -29,8 +29,6 @@ os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 from pathlib import Path  # noqa: E402
 from typing import Dict, List  # noqa: E402
 
-from device_smi import Device  # noqa: E402
-from gptqmodel.models._const import CUDA_0  # noqa: E402
 from logbar import LogBar  # noqa: E402
 
 sys.path.insert(0, f"{str(Path(__file__).resolve().parent.parent)}/models")  # noqa: E402
@@ -66,7 +64,7 @@ class ModelTest(unittest.TestCase):
     APPLY_CHAT_TEMPLATE = False
     TORCH_DTYPE = "auto"
     EVAL_BATCH_SIZE = "auto"
-    QUANT_BATCH_SIZE = 2
+    QUANT_BATCH_SIZE = 1
     LOAD_BACKEND = BACKEND.AUTO
     QUANT_BACKEND = BACKEND.AUTO
     USE_VLLM = False
@@ -96,6 +94,9 @@ class ModelTest(unittest.TestCase):
     EXPECT_LM_HEAD_LOSS = None
 
     QUANTIZE_CONFIG_BITS = 4
+    QUANTIZE_CONFIG_GROUP_SIZE = 128
+
+    V2 = False
 
     def assertInference(self, model, tokenizer=None, keywords=None, prompt=INFERENCE_PROMPT):
         # gptqmodel can auto init tokenizer internally
@@ -166,25 +167,30 @@ class ModelTest(unittest.TestCase):
     def quantModel(self, model_id_or_path, trust_remote_code=False, torch_dtype="auto", need_eval=True, batch_size: int = QUANT_BATCH_SIZE, **kwargs):
         quantize_config = QuantizeConfig(
             bits=self.QUANTIZE_CONFIG_BITS,
-            group_size=128,
+            group_size=self.QUANTIZE_CONFIG_GROUP_SIZE,
             format=self.QUANT_FORMAT,
             desc_act=self.DESC_ACT,
             sym=self.SYM,
+            v2=self.V2
         )
+
+        log.info(f"Quant config: {quantize_config}")
+        log.info(f"Quant batch_size: {batch_size}")
+
         args = kwargs if kwargs else {}
 
         if self.DISABLE_FLASH_ATTN:
             has_attn_implementation = Version(transformers.__version__) >= Version("4.46.0")
             if has_attn_implementation:
-                args["attn_implementation"] = None
+                args["attn_implementation"] = "eager"
             args["use_flash_attention_2"] = False
 
+        log.info(f"args: {args}")
         model = GPTQModel.load(
             model_id_or_path,
             quantize_config=quantize_config,
             trust_remote_code=trust_remote_code,
             torch_dtype=torch_dtype,
-            backend=self.LOAD_BACKEND,
             device_map={"": "cpu"} if self.LOAD_BACKEND == BACKEND.IPEX else "auto",
             **args,
         )
@@ -253,6 +259,7 @@ class ModelTest(unittest.TestCase):
         model = GPTQModel.load(
             model_id_or_path,
             trust_remote_code=trust_remote_code,
+            backend=self.LOAD_BACKEND,
             device_map={"": "cpu"} if self.LOAD_BACKEND == BACKEND.IPEX else "auto",
             **kargs
         )
@@ -265,7 +272,7 @@ class ModelTest(unittest.TestCase):
                 if self.USE_VLLM:
                     model_args = {
                         "pretrained": model.model_local_path,
-                        "dtype": "auto",
+                        "dtype": "auto", #"float16",
                         "gpu_memory_utilization": 0.8,
                         "tensor_parallel_size": 1,
                         "trust_remote_code": trust_remote_code,
@@ -275,34 +282,42 @@ class ModelTest(unittest.TestCase):
                     model_args = {}
                 if extra_args:
                     model_args.update(extra_args)
+
                 from lm_eval.tasks import TaskManager
                 from lm_eval.utils import make_table
-                results = GPTQModel.eval(
-                    model_or_id_or_path=model,
-                    llm_backend="vllm" if self.USE_VLLM else "gptqmodel",
-                    model_args=model_args,
-                    output_path=tmp_dir,
-                    framework=EVAL.LM_EVAL,
-                    tasks=[self.TASK_NAME],
-                    apply_chat_template=apply_chat_template,
-                    trust_remote_code=trust_remote_code,
-                    batch_size=self.EVAL_BATCH_SIZE,
-                    gen_kwargs="temperature=0.0,top_k=50",
-                    random_seed=RAND_SEED,
-                    task_manager=TaskManager(include_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../tasks"), include_defaults=False)
-                )
 
-                print('--------Eval Result---------')
-                print(make_table(results))
-                if "groups" in results:
-                    print(make_table(results, "groups"))
-                print('--------Eval Result End---------')
-                task_results = {
-                    metric: value for metric, value in results['results'].get(self.TASK_NAME.value, {}).items()
-                    if metric != 'alias' and 'stderr' not in metric
-                }
-                print(task_results)
-                if delete_quantized_model and model.model_local_path.startswith("/tmp") and os.path.exists(model.model_local_path):
+                task_groups = EVAL.get_task_groups_from_tasks(self.TASK_NAME)
+
+                for framework, tasks in task_groups.items():
+                    log.info(f"TEST: EVAL starting: backend = {self.LOAD_BACKEND}")
+                    results = GPTQModel.eval(
+                        model_or_id_or_path=model,
+                        llm_backend="vllm" if self.USE_VLLM else "gptqmodel",
+                        model_args=model_args,
+                        output_path=tmp_dir,
+                        framework=framework,
+                        tasks=tasks,
+                        apply_chat_template=apply_chat_template,
+                        trust_remote_code=trust_remote_code,
+                        batch_size=self.EVAL_BATCH_SIZE,
+                        gen_kwargs="temperature=0.0,top_k=50",
+                        random_seed=RAND_SEED,
+                        task_manager=TaskManager(include_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "../tasks"), include_defaults=False)
+                    )
+
+                    print('--------Eval Result---------')
+                    print(make_table(results))
+                    if "groups" in results:
+                        print(make_table(results, "groups"))
+                    print('--------Eval Result End---------')
+                    task_results = {
+                        metric: value for metric, value in results['results'].get(self.TASK_NAME.value, {}).items()
+                        if metric != 'alias' and 'stderr' not in metric
+                    }
+                    print(task_results)
+
+                if delete_quantized_model and model.model_local_path.startswith("/tmp") and os.path.exists(
+                        model.model_local_path):
                     shutil.rmtree(model.model_local_path)
                 return task_results
         except BaseException as e:
@@ -384,6 +399,3 @@ class ModelTest(unittest.TestCase):
                 os.unlink(item_path)
             elif os.path.isdir(item_path):
                 shutil.rmtree(item_path)
-
-    def get_batch_size(self):
-        return 8 if Device(CUDA_0).memory_total / 1024 / 1024 / 1024 > 24 else 2

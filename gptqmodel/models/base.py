@@ -36,7 +36,7 @@ from transformers import (AutoModelForCausalLM, AutoProcessor, PreTrainedModel,
                           PreTrainedTokenizerBase, ProcessorMixin, modeling_utils)
 
 from ..adapter.adapter import Adapter
-from ..nn_modules.hooked_linear import replace_linear_with_hooked_linear
+from ..nn_modules.hooked_linear import replace_module_with_hooked_tree
 from ..nn_modules.qlinear import BaseQuantLinear
 from ..nn_modules.qlinear.torch import TorchQuantLinear
 from ..quantization import GPTQ, QuantizeConfig
@@ -85,6 +85,8 @@ class BaseGPTQModel(nn.Module):
     layer_type: Union[List[str], str] = None
     # for each repeating layer there are multiple modules within each layer
     layer_modules: List[List[str]] = None
+    # a tree node of all the roots that contain quantizable modules
+    layers_modules_tree: List[str] = None
 
     # Strict=True -> all layer_modules must exists in model
     # Some models (deepseek2-lite) dynamically create lora modules based on config.rank
@@ -467,11 +469,13 @@ class BaseGPTQModel(nn.Module):
 
         else:
             from ..looper.gptq_processor import GPTQProcessor
-            quantize_processor = GPTQProcessor(**args)
+            quantize_processor = [GPTQProcessor(**args)]
 
+        if self.quantize_config.v2 is True:
+            from ..looper.native_processor import NativeProcessor
+            quantize_processor.insert(0, NativeProcessor(**args))
 
-        processors = [quantize_processor]
-
+        processors = quantize_processor
         # Append EoRA processor for lora adapter
         if needs_lora:
             processors.append(
@@ -906,7 +910,7 @@ class BaseGPTQModel(nn.Module):
         shared_kv_cache_dict = {}
 
         # replace linear with hooked linear
-        replace_linear_with_hooked_linear(self.model)
+        replace_module_with_hooked_tree(self.model)
 
         quantized_weights = {}
         for module_index in quant_modules_pb:
@@ -1344,7 +1348,7 @@ class BaseGPTQModel(nn.Module):
 
     def lm_head_pre_quantize_generate_hook(self, inputs: List[List[torch.tensor]]) -> List[List[torch.tensor]]:
         if self.pre_lm_head_norm_module:
-            norm = get_module_by_name_prefix(self.model, self.pre_lm_head_norm_module)
+            norm, _ = get_module_by_name_prefix(self.model, [self.pre_lm_head_norm_module])
             self.pre_quantize(norm)
 
             for element in inputs:

@@ -50,11 +50,12 @@ class Test(ModelTest):
 
     @parameterized.expand(
         [
-            (QUANT_METHOD.GPTQ, FORMAT.GPTQ),
-            # (QUANT_METHOD.QQQ, FORMAT.QQQ),
+            (QUANT_METHOD.GPTQ, FORMAT.GPTQ, True), # gptq v2
+            (QUANT_METHOD.GPTQ, FORMAT.GPTQ, False), # gptq v1
+            #(QUANT_METHOD.QQQ, FORMAT.QQQ),
         ]
     )
-    def test_quant_and_eora(self, quant_method: QUANT_METHOD, format: FORMAT):
+    def test_quant_and_eora(self, quant_method: QUANT_METHOD, format: FORMAT, v2: bool):
         bits = 4
         group_size = 128
         desc_act = True
@@ -112,6 +113,7 @@ class Test(ModelTest):
                 adapter=eora,
                 format=format,
                 quant_method=quant_method,
+                v2=v2,
             )
 
             model = GPTQModel.load(
@@ -135,8 +137,8 @@ class Test(ModelTest):
             torch_empty_cache()
 
             # BACKEND.EXLLAMA_V2, BACKEND.EXLLAMA_V1, BACKEND.TRITON, BACKEND.CUDA,
-            for backend in [ BACKEND.TORCH ]: # BACKEND.IPEX, BACKEND.BITBLAS, BACKEND.EXLLAMA_V2V BACKEND.MARLIN
-                #base_bench = self.bench(path=tmpdir, backend=backend, adapter=None) # inference using qweights only
+            for backend in [ BACKEND.AUTO ]: # BACKEND.IPEX, BACKEND.BITBLAS, BACKEND.EXLLAMA_V2V BACKEND.MARLIN
+                base_bench = self.bench(path=tmpdir, backend=backend, adapter=None) # inference using qweights only
                 eora_bench = self.bench(path=tmpdir, backend=backend, adapter=eora) # inference using eora (lora)
 
                 print('--------GPTQModel + EoRA Config ---------')
@@ -145,10 +147,10 @@ class Test(ModelTest):
                 table_data = [[key, value] for key, value in config_dict.items()]
                 print(tabulate(table_data, headers=["Key", "Value"], tablefmt="grid"))
 
-                # print(f'--------Eval {quant_method} Result---------')
-                # print(make_table(base_bench))
-                # if "groups" in base_bench:
-                #     print(make_table(base_bench, "groups"))
+                print(f'--------Eval {quant_method} Result---------')
+                print(make_table(base_bench))
+                if "groups" in base_bench:
+                    print(make_table(base_bench, "groups"))
 
                 print(f'--------Eval {quant_method} + EoRA Result---------')
                 print(make_table(eora_bench))
@@ -172,7 +174,6 @@ class Test(ModelTest):
             model_or_id_or_path=model,
             framework=EVAL.LM_EVAL,
             tasks=[EVAL.LM_EVAL.ARC_CHALLENGE, EVAL.LM_EVAL.MMLU],
-            batch_size=self.get_batch_size(),
         )
 
         del model
